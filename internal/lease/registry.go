@@ -67,6 +67,23 @@ func (r *Registry) Get(vesselID uuid.UUID) (model.Lease, bool) {
 	return lease, ok
 }
 
+// InContact reports whether the vessel currently holds a live operating lease.
+func (r *Registry) InContact(vesselID uuid.UUID, now time.Time) bool {
+	r.mu.RLock()
+	lease, ok := r.leases[vesselID]
+	r.mu.RUnlock()
+	return ok && lease.Active(now.UTC())
+}
+
+// LostContact reports a vessel that is lease-tracked but whose lease has
+// expired. Vessels without a lease are simply untracked, not lost.
+func (r *Registry) LostContact(vesselID uuid.UUID, now time.Time) bool {
+	r.mu.RLock()
+	lease, ok := r.leases[vesselID]
+	r.mu.RUnlock()
+	return ok && !lease.Active(now.UTC())
+}
+
 func (r *Registry) Release(vesselID uuid.UUID, owner string, token uint64) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()

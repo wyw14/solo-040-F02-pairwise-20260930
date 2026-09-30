@@ -62,9 +62,9 @@ func NewRuntime(ctx context.Context, dataDirectory string) (*Runtime, error) {
 	signalPublisher := signal.NewPublisher(signalStore, recorder, now)
 	signalService := signal.NewService(signalStore)
 	admissionQueue := admission.NewQueue()
-	admissionController := admission.NewController(admissionQueue, gateState, signalStore, now)
-	admissionService := admission.NewService(admissionController, recorder, now)
 	leaseRegistry := lease.NewRegistry()
+	admissionController := admission.NewController(admissionQueue, gateState, signalStore, leaseRegistry, now)
+	admissionService := admission.NewService(admissionController, recorder, now)
 	leaseService := lease.NewService(leaseRegistry, admissionController, recorder, now)
 	leaseSweeper := lease.NewSweeper(leaseRegistry, now)
 	planner := schedule.NewPlanner(admissionService, recorder, now)
@@ -88,7 +88,9 @@ func NewRuntime(ctx context.Context, dataDirectory string) (*Runtime, error) {
 		levelByChamber, emergencyActive,
 	)
 	cycleCoordinator := cycle.NewCoordinator(gateController, hydraulicsController, recorder, now)
-	cycleService := cycle.NewService(cycleCoordinator, admissionService)
+	cycleService := cycle.NewService(cycleCoordinator)
+	// Per-vessel admission gates the entry-gate open and the seal transition.
+	cycleCoordinator.BindAdmission(admissionService, admissionService)
 	safetyCoordinator = safety.NewCoordinator(gateCommands, barrier, recorder, now)
 	safetyService := safety.NewService(safetyCoordinator, cycleCoordinator)
 	signalService.BindTransitLookup(cycleCoordinator)

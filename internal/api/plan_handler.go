@@ -56,7 +56,19 @@ func plansHandler(runtime *Runtime) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		result := make(map[string]any, len(runtime.Chambers))
 		for _, chamberID := range runtime.Chambers {
-			result[chamberID] = runtime.Schedule.Active(chamberID)
+			plans := runtime.Schedule.Active(chamberID)
+			items := make([]map[string]any, 0, len(plans))
+			for _, plan := range plans {
+				progress := runtime.Admission.PlanProgress(chamberID, plan.ID)
+				readyToSeal, sealReason := runtime.Admission.CanSeal(chamberID, plan.ID)
+				items = append(items, map[string]any{
+					"plan":          plan,
+					"admission":     progress,
+					"ready_to_seal": readyToSeal,
+					"seal_reason":   sealReason,
+				})
+			}
+			result[chamberID] = items
 		}
 		writeJSON(w, http.StatusOK, result)
 	}

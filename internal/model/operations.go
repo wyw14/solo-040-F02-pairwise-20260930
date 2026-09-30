@@ -14,6 +14,43 @@ type Vessel struct {
 	LengthM  float64   `json:"length_m"`
 }
 
+// AdmissionState is the per-vessel gate confirmation within a convoy queue.
+type AdmissionState string
+
+const (
+	// AdmissionStandby: queued, waiting for the predecessor vessels.
+	AdmissionStandby AdmissionState = "standby"
+	// AdmissionAllowed: proceed signal shown, vessel cleared to move in.
+	AdmissionAllowed AdmissionState = "allowed"
+	// AdmissionEntered: field reports the vessel is actually inside the chamber.
+	AdmissionEntered AdmissionState = "entered"
+	// AdmissionWithdrawn: vessel failed or lost contact; followers must stay held.
+	AdmissionWithdrawn AdmissionState = "withdrawn"
+)
+
+func (s AdmissionState) Valid() bool {
+	switch s {
+	case AdmissionStandby, AdmissionAllowed, AdmissionEntered, AdmissionWithdrawn:
+		return true
+	}
+	return false
+}
+
+// Terminal reports whether the vessel's queue slot has reached a final outcome.
+func (s AdmissionState) Terminal() bool {
+	return s == AdmissionEntered || s == AdmissionWithdrawn
+}
+
+// VesselAdmission is the journaled status of one queue slot.
+type VesselAdmission struct {
+	PlanID    uuid.UUID      `json:"plan_id"`
+	VesselID  uuid.UUID      `json:"vessel_id"`
+	Sequence  int            `json:"sequence"`
+	State     AdmissionState `json:"state"`
+	Reason    string         `json:"reason,omitempty"`
+	ChangedAt time.Time      `json:"changed_at"`
+}
+
 func NewVessel(name, callSign string, lengthM float64) (Vessel, error) {
 	if name == "" || callSign == "" || lengthM <= 0 {
 		return Vessel{}, errors.New("vessel name, call sign and positive length are required")

@@ -43,8 +43,20 @@ button {
   min-height: 38px; padding: 8px 14px; font: inherit; cursor: pointer;
 }
 button:hover { background: #27878a; }
+button.primary { border-color: #7fd3d1; background: #1d8387; }
 button.danger { border-color: #ef6f6c; background: #8f3434; }
 button:disabled { opacity: .55; cursor: wait; }
+.plan-list { display: flex; flex-direction: column; gap: 14px; }
+.plan-card { border: 1px solid #2c3941; border-radius: 6px; padding: 14px 16px; background: #1d262d; }
+.plan-head { display: flex; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 10px; font-size: 13px; }
+.gate-controls { display: flex; gap: 8px; margin: 6px 0 12px; }
+td.actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+td.actions button { min-height: 30px; padding: 4px 10px; font-size: 12px; }
+.badge { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid transparent; }
+.badge.standby { background: #33404a; color: #c4d0d6; }
+.badge.allowed { background: #174e52; color: #8fe3e1; border-color: #2b7e80; }
+.badge.entered { background: #235033; color: #9fe6b4; border-color: #3a8a55; }
+.badge.withdrawn { background: #5a2626; color: #f4a3a1; border-color: #a14b48; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th, td { text-align: left; border-bottom: 1px solid #2c3941; padding: 10px 8px; vertical-align: top; }
 th { color: #91a0a8; font-weight: 600; }

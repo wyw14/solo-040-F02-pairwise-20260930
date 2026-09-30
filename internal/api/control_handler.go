@@ -17,7 +17,15 @@ func openGateHandler(runtime *Runtime) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, errors.New("invalid gate direction"))
 			return
 		}
-		command, err := runtime.Interlocks.RequestOpen(r.Context(), mustCurrent(runtime, chamberID), direction, "http:"+requestID(r.Context()))
+		cycleValue := mustCurrent(runtime, chamberID)
+		// The entry gate only opens once a standing-by head vessel exists.
+		if cycleValue.Stage == model.StagePlanned {
+			if _, ready, reason := runtime.Admission.CanOpen(chamberID, cycleValue.PlanID); !ready {
+				writeError(w, http.StatusConflict, errors.New("cannot open entry gate: "+reason))
+				return
+			}
+		}
+		command, err := runtime.Interlocks.RequestOpen(r.Context(), cycleValue, direction, "http:"+requestID(r.Context()))
 		if err != nil {
 			writeError(w, http.StatusConflict, err)
 			return

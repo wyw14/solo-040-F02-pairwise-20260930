@@ -3,6 +3,7 @@ package cycle
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -13,6 +14,16 @@ import (
 	"github.com/wyw14/cry-96/internal/model"
 )
 
+// AdmissionGate reports whether the convoy has finished entering the chamber.
+type AdmissionGate interface {
+	CanSeal(chamberID string, planID uuid.UUID) (bool, string)
+}
+
+// OpenGate reports whether the queue head is ready for the entry gate to open.
+type OpenGate interface {
+	CanOpen(chamberID string, planID uuid.UUID) (model.Vessel, bool, string)
+}
+
 // Coordinator is the authoritative owner of active transit generations.
 type Coordinator struct {
 	mu          sync.RWMutex
@@ -21,6 +32,8 @@ type Coordinator struct {
 	gates       *gate.Controller
 	hydraulics  *hydraulics.Controller
 	recorder    *journal.Recorder
+	admission   AdmissionGate
+	openGate    OpenGate
 	now         func() time.Time
 }
 
@@ -32,6 +45,14 @@ func NewCoordinator(gates *gate.Controller, hydraulicsController *hydraulics.Con
 		current: make(map[string]model.TransitCycle), generations: make(map[string]uint64),
 		gates: gates, hydraulics: hydraulicsController, recorder: recorder, now: now,
 	}
+}
+
+// BindAdmission wires the per-vessel admission gates after construction.
+func (c *Coordinator) BindAdmission(seal AdmissionGate, open OpenGate) {
+	c.mu.Lock()
+	c.admission = seal
+	c.openGate = open
+	c.mu.Unlock()
 }
 
 func (c *Coordinator) Start(ctx context.Context, plan model.ConvoyPlan) (model.TransitCycle, error) {
@@ -80,6 +101,9 @@ func (c *Coordinator) Cancel(ctx context.Context, chamberID, reason string) (mod
 }
 
 func (c *Coordinator) ApplyGateAck(ctx context.Context, ack model.DeviceAck) error {
+	if err := c.preflightGateAck(ack); err != nil {
+		return err
+	}
 	command, err := c.gates.Confirm(ctx, ack)
 	if err != nil {
 		return err
@@ -108,6 +132,40 @@ func (c *Coordinator) ApplyGateAck(ctx context.Context, ack model.DeviceAck) err
 	}
 	_, err = c.recorder.Record(ctx, ack.ChamberID, model.EventCycleAdvanced, cycleValue.ID, cycleValue.Generation, cycleValue)
 	return err
+}
+
+// preflightGateAck enforces admission boundaries before the physical gate
+// command is settled, so a rejected open/seal never moves gate hardware.
+func (c *Coordinator) preflightGateAck(ack model.DeviceAck) error {
+	command, ok := c.gates.Commands().Get(ack.CommandID)
+	if !ok {
+		return fmt.Errorf("unknown command %s", ack.CommandID)
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	cycleValue, ok := c.current[ack.ChamberID]
+	if !ok || cycleValue.Stage.Terminal() || !cycleValue.IdentityMatches(command.CycleID, command.Generation) {
+		return errors.New("device acknowledgement belongs to an inactive transit generation")
+	}
+	next, err := nextAfterGate(cycleValue.Stage)
+	if err != nil {
+		return err
+	}
+	switch next {
+	case model.StageAdmitting:
+		if c.openGate != nil {
+			if _, ready, reason := c.openGate.CanOpen(ack.ChamberID, cycleValue.PlanID); !ready {
+				return fmt.Errorf("cannot begin admission: %s", reason)
+			}
+		}
+	case model.StageSealed:
+		if c.admission != nil {
+			if ready, reason := c.admission.CanSeal(ack.ChamberID, cycleValue.PlanID); !ready {
+				return fmt.Errorf("cannot seal chamber: %s", reason)
+			}
+		}
+	}
+	return nil
 }
 
 func (c *Coordinator) ApplySignalHandoff(ctx context.Context, cycleID uuid.UUID, generation uint64) error {
